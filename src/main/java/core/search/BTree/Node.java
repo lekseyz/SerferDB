@@ -1,5 +1,6 @@
 package core.search.BTree;
 
+import java.awt.*;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -20,60 +21,14 @@ public class Node {
     public static final int VAL_MAX_SIZE = 512;
 
     //region Node fields
-    public static class Key implements Comparable<Key>{
-        public byte[] key;
-
-        public Key(byte[] key) {
-            this.key = key;
-        }
-
-        public Key() {
-            this.key = null;
-        }
-
-        public static Key NullKey() {
-            return new Key(new byte[]{0});
-        }
-
-        @Override
-        public int compareTo(Key o) {
-            int minLen = Math.min(this.key.length, o.key.length);
-
-            for (int i = 0; i < minLen; i++) {
-                int cmp = Integer.compare(
-                        Byte.toUnsignedInt(this.key[i]),
-                        Byte.toUnsignedInt(o.key[i])
-                );
-                if (cmp != 0) return cmp;
-            }
-
-            return Integer.compare(this.key.length, o.key.length);
-        }
-    }
-    public static class Value {
-        public byte[] value;
-
-        public Value(byte[] value) {
-            this.value = value;
-        }
-
-        public Value() {
-            this.value = null;
-        }
-
-        public static Value NullValue() {
-            return new Value(new byte[]{0});
-        }
-    }
-
     public static class NodeSizeException extends Exception {}
     public static class ValueSizeException extends Exception {}
     public static class KeySizeException extends Exception {}
 
-    public boolean isLeaf;
-    public List<Key> keys;
-    public List<Integer> childrenRefs;
-    public List<Value> values;
+    private boolean isLeaf;
+    private List<Key> keys;
+    private List<Integer> childrenRefs;
+    private List<Value> values;
     //endregion
 
     public Node(boolean isLeaf) {
@@ -91,8 +46,8 @@ public class Node {
 
 
     //region Byte buffer encoding decoding
-    public static ByteBuffer Encode(Node node) throws NodeSizeException, KeySizeException, ValueSizeException {
-        if (node.NodeSize() > PAGE_SIZE) throw new NodeSizeException();
+    public static ByteBuffer encode(Node node) throws NodeSizeException, KeySizeException, ValueSizeException {
+        if (node.nodeSize() > PAGE_SIZE) throw new NodeSizeException();
 
         var buff = ByteBuffer.allocate(PAGE_SIZE);
         buff.put((byte) (node.isLeaf ? 1 : 0));
@@ -117,10 +72,10 @@ public class Node {
             }
         }
 
-        return buff;
+        return buff.flip();
     }
 
-    public static Node Decode(ByteBuffer buffer) {
+    public static Node decode(ByteBuffer buffer) {
         Node node = new Node();
         node.isLeaf = buffer.get() == 1;
         short keysCount = buffer.getShort();
@@ -155,7 +110,8 @@ public class Node {
     }
     //endregion
 
-    public int NodeSize() {
+    //region Size methods
+    public int nodeSize() {
         int size = 1 + 2; // flag + keys count
         for (var key : this.keys) {
             size += 2 + key.key.length;
@@ -165,31 +121,78 @@ public class Node {
                 size += 2 + value.value.length;
             }
         } else {
-            size += this.childrenRefs.size() * 4; // amount of children * size of ref
+            size += this.keys.size() * 4; // amount of children * size of ref
         }
 
         return size;
     }
 
-    public int GetKeyIndex(Key key) {
+    public boolean isMergingSize() {
+        int size = this.nodeSize();
+        return size <= PAGE_SIZE / 4;
+    }
+    //endregion
+
+    private int getKeyIndex(Key key) {
         int newKeyIndex = Collections.binarySearch(this.keys, key);
         if (newKeyIndex >= 0) return newKeyIndex;
         return -newKeyIndex - 2;
     }
 
-    //region Node insertions and updates
-    public void NodeUpdate(Key key, int child) {
-        NodeUpdate(key, child, null);
+    public Value getKeyValue(Key key) {
+        if (!this.isLeaf) throw new UnsupportedOperationException("value cannot be obtained from a non-leaf node");
+
+        int idx = getKeyIndex(key);
+        assert idx >= 0;
+
+        if (this.keys.get(idx).compareTo(key) != 0)
+            return null;
+
+        return this.values.get(idx);
     }
 
-    public void NodeUpdate(Key key, int child, Key newKey) {
-        if (this.isLeaf) return; // TODO: error
+    public int getChildRef(Key key) {
+        if (this.isLeaf) throw new UnsupportedOperationException("childRef cannot be obtained from a leaf node");
+
+
+        int idx = getKeyIndex(key);
+        assert idx >= 0;
+
+        return this.childrenRefs.get(idx);
+    }
+
+    public boolean isLeaf() {
+        return isLeaf;
+    }
+
+    public List<Key> getKeys() {
+        return Collections.unmodifiableList(this.keys);
+    }
+
+    public List<Value> getValues() {
+        return Collections.unmodifiableList(this.values);
+    }
+
+    public List<Integer> getChildrenRefs() {
+        return Collections.unmodifiableList(this.childrenRefs);
+    }
+
+    //region Node insertions and updates
+    public void nodeUpdate(Key key, int child) {
+        nodeUpdate(key, child, null);
+    }
+
+    public void nodeUpdate(Key key, int child, Key newKey) {
+        if (this.isLeaf) throw new UnsupportedOperationException("child ref cannot inserted to leaf node");
+
         if (this.keys.isEmpty()) {
             this.keys.add(key);
             this.childrenRefs.add(child);
         }
 
-        int idx = GetKeyIndex(key);
+        int idx = getKeyIndex(key);
+        assert idx >= 0;
+
         if (newKey != null) {
             this.keys.set(idx, newKey);
             this.childrenRefs.set(idx, child);
@@ -202,15 +205,18 @@ public class Node {
         }
     }
 
-    public void LeafUpdate(Key key, Value value) {
-        if (!this.isLeaf) return; // TODO: error
+    public void leafUpdate(Key key, Value value) {
+        if (!this.isLeaf) throw new UnsupportedOperationException("value cannot be inserted to a non-leaf node");
+
         if (this.keys.isEmpty()) {
             this.keys.add(key);
             this.values.add(value);
             return;
         }
 
-        int idx = GetKeyIndex(key);
+        int idx = getKeyIndex(key);
+        assert idx >= 0;
+
         if (this.keys.get(idx).compareTo(key) == 0)
             this.values.set(idx, value);
         else {
@@ -221,12 +227,15 @@ public class Node {
     //endregion
 
     //region Node deletion
-    public boolean LeafDelete(Key key) {
-        if (!this.isLeaf) return false; // TODO: error
+    public boolean leafDelete(Key key) {
+        if (!this.isLeaf) throw new UnsupportedOperationException("value cannot be deleted from a non-leaf node");
+
         if (this.keys.isEmpty())
             return false;
 
-        int idx = GetKeyIndex(key);
+        int idx = getKeyIndex(key);
+        assert idx >= 0;
+
         if (this.keys.get(idx).compareTo(key) == 0) {
             this.keys.remove(idx);
             this.values.remove(idx);
@@ -235,12 +244,15 @@ public class Node {
         return false;
     }
 
-    public boolean NodeDelete(Key key) {
-        if (this.isLeaf) return false;
+    public boolean nodeDelete(Key key) {
+        if (this.isLeaf) throw new UnsupportedOperationException("childrenRef cannot be deleted from a non-leaf node");
+
         if (this.keys.isEmpty())
             return false;
 
-        int idx = GetKeyIndex(key);
+        int idx = getKeyIndex(key);
+        assert idx >= 0;
+
         this.keys.remove(idx);
         this.childrenRefs.remove(idx);
         return true;
@@ -248,20 +260,38 @@ public class Node {
     //endregion
 
     //region Work with children
-    public int GetChildRef(Key key) {
-        if (this.isLeaf) return -1; //TODO: error
 
-        int idx = GetKeyIndex(key);
-        return this.childrenRefs.get(idx);
+    public int getRightSiblingRef(Key key) {
+        if (this.isLeaf) throw new UnsupportedOperationException("sibling cannot be obtained from a leaf node");
+
+        int idx = getKeyIndex(key);
+        assert idx >= 0;
+
+        if ((idx + 1) >= this.childrenRefs.size())
+            return -1;
+
+        return this.childrenRefs.get(idx + 1);
     }
 
-    public void InsertSplitChildren(List<Node> children, List<Integer> refs) {
+    public int getLeftSiblingRef(Key key) {
+        if (this.isLeaf) throw new UnsupportedOperationException("sibling cannot be obtained from a leaf node");
+
+        int idx = getKeyIndex(key);
+        assert idx >= 0;
+
+        if (idx < 1)
+            return -1;
+
+        return this.childrenRefs.get(idx - 1);
+    }
+
+    public void insertSplitChildren(List<Node> children, List<Integer> refs) {
         for (int i = 0; i < children.size(); i++) {
-            NodeUpdate(children.get(i).keys.getFirst(), refs.get(i));
+            nodeUpdate(children.get(i).keys.getFirst(), refs.get(i));
         }
     }
 
-    public Node MergeTwoChildren(Node left, Node right) {
+    public Node mergeTwoChildren(Node left, Node right) {
         assert left.isLeaf == right.isLeaf : "Incompatible children types";
 
         left.keys.addAll(right.keys);
@@ -270,22 +300,25 @@ public class Node {
         } else {
             left.childrenRefs.addAll(right.childrenRefs);
         }
-        int idx = GetKeyIndex(right.keys.getFirst());
+        int idx = getKeyIndex(right.keys.getFirst());
+        assert idx >= 0;
+
         this.keys.remove(idx);
         this.childrenRefs.remove(idx);
         return left;
     }
+    //endregion
 
     //region Node splitting
     public static List<Node> split(Node old) {
-        if (old.NodeSize() <= PAGE_SIZE) {
+        if (old.nodeSize() <= PAGE_SIZE) {
             return Collections.singletonList(old);
         }
 
         Node[] two = split2(old);
         Node left = two[0], right = two[1];
 
-        if (left.NodeSize() <= PAGE_SIZE) {
+        if (left.nodeSize() <= PAGE_SIZE) {
             return List.of(left, right);
         }
 

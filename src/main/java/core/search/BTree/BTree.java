@@ -11,117 +11,120 @@ public class BTree {
         return 0;
     }
 
-    private void delete(int ref) {
+    private void deletec(int ref) {
 
     }
 
-    public void Insert(Node.Key key, Node.Value value) {
+    public void insert(Key key, Value value) {
         if (root == -1) {
             Node node = new Node(true);
-            node.LeafUpdate(Node.Key.NullKey(), Node.Value.NullValue()); // Manually inserting minimal possible value
-            node.LeafUpdate(key, value);
+            node.leafUpdate(Key.NullKey(), Value.NullValue()); // Manually inserting minimal possible value
+            node.leafUpdate(key, value);
             root = set(node);
             return;
         }
         Node curRoot = get(this.root);
-        delete(this.root);
-        Node node = Insert(key, value, get(root));
+        deletec(this.root);
+        Node node = insert(key, value, get(root));
         var split = Node.split(node);
         var splitRefs = split.stream().map(this::set).toList();
         if (split.size() > 1) {
             Node newRoot = new Node(false);
-            newRoot.InsertSplitChildren(split, splitRefs);
+            newRoot.insertSplitChildren(split, splitRefs);
             root = set(newRoot);
         } else {
             root = splitRefs.getFirst();
         }
     }
 
-    private Node Insert(Node.Key key, Node.Value value, Node curNode) {
-        if (curNode.isLeaf) {
-            curNode.LeafUpdate(key, value);
+    private Node insert(Key key, Value value, Node curNode) {
+        if (curNode.isLeaf()) {
+            curNode.leafUpdate(key, value);
             return curNode;
         }
-        int nodeRef = curNode.GetChildRef(key);
+        int nodeRef = curNode.getChildRef(key);
         Node node = get(nodeRef);
-        delete(nodeRef);
-        node = Insert(key, value, node);
+        deletec(nodeRef);
+        node = insert(key, value, node);
 
         var split = Node.split(node);
         var splitRefs = split.stream().map(this::set).toList();
-        curNode.InsertSplitChildren(split, splitRefs);
+        curNode.insertSplitChildren(split, splitRefs);
         return curNode;
     }
 
-    public boolean Delete(Node.Key key) {
+    public boolean delete(Key key) {
         if (root == -1) return false;
 
         Node node = get(root);
-        node = Delete(key, node);
+        node = delete(key, node);
         if (node == null) return false;
 
-        delete(root);
+        deletec(root);
 
-        if (node.keys.size() < 2) {
-            root = node.childrenRefs.getFirst();
+        if (node.getKeys().size() < 2) {
+            root = node.getChildrenRefs().getFirst();
         } else {
             root = set(node);
         }
         return true;
     }
 
-    public Node Delete(Node.Key key, Node node) {
+    public Node delete(Key key, Node node) {
 
-        if (node.isLeaf) {
-            if (!node.LeafDelete(key))
+        if (node.isLeaf()) {
+            if (!node.leafDelete(key))
                 return null;
             return node;
         }
-        int ref = node.GetChildRef(key);
+        int ref = node.getChildRef(key);
         Node child = get(ref);
-        child = Delete(key, child);
+        child = delete(key, child);
 
         if (child == null) return null;
 
-        delete(ref);
+        deletec(ref);
         Node sibling = null;
-        int mergeDir = ShouldMerge(node, child, sibling);
+        int mergeDir = shouldMerge(node, child, sibling);
 
         if (mergeDir < 0) {
-            Node merged = node.MergeTwoChildren(sibling, child);
-            node.NodeUpdate(merged.keys.getFirst(), set(merged), merged.keys.getFirst());
+            assert sibling != null;
+            Node merged = node.mergeTwoChildren(sibling, child);
+            node.nodeUpdate(merged.getKeys().getFirst(), set(merged), merged.getKeys().getFirst());
             return node;
         } else if (mergeDir > 0) {
-            Node merged = node.MergeTwoChildren(child, sibling);
-            node.NodeUpdate(merged.keys.getFirst(), set(merged), merged.keys.getFirst());
+            assert sibling != null;
+            Node merged = node.mergeTwoChildren(child, sibling);
+            node.nodeUpdate(merged.getKeys().getFirst(), set(merged), merged.getKeys().getFirst());
             return node;
         }
 
-        if (child.keys.isEmpty()) {
-            node.NodeDelete(key);
+        if (child.getKeys().isEmpty()) {
+            node.nodeDelete(key);
             return node;
         }
-        node.NodeUpdate(key, set(child), child.keys.getFirst());
+        node.nodeUpdate(key, set(child), child.getKeys().getFirst());
         return node;
     }
 
-    private int ShouldMerge(Node parent, Node child, Node outSibling) {
-        if (child.NodeSize() > Node.PAGE_SIZE / 4) {
+    private int shouldMerge(Node parent, Node child, Node outSibling) {
+        if (!child.isMergingSize()) {
             outSibling = null;
             return 0;
         }
 
-        int idx = parent.GetKeyIndex(child.keys.getFirst());
-        if (idx > 0) {
-            Node sibling = get(parent.childrenRefs.get(idx - 1));
-            if (sibling.NodeSize() + child.NodeSize() <= Node.PAGE_SIZE) {
+        int leftSibling = parent.getLeftSiblingRef(child.getKeys().getFirst());
+        int rightSibling = parent.getRightSiblingRef(child.getKeys().getFirst());
+        if (leftSibling != -1) {
+            Node sibling = get(leftSibling);
+            if (sibling.nodeSize() + child.nodeSize() <= Node.PAGE_SIZE) {
                 outSibling = sibling;
                 return -1;
             }
         }
-        if (parent.keys.size() > (idx + 1)) {
-            Node sibling = get(parent.childrenRefs.get(idx + 1));
-            if (sibling.NodeSize() + child.NodeSize() <= Node.PAGE_SIZE) {
+        if (rightSibling != -1) {
+            Node sibling = get(rightSibling);
+            if (sibling.nodeSize() + child.nodeSize() <= Node.PAGE_SIZE) {
                 outSibling = sibling;
                 return 1;
             }
