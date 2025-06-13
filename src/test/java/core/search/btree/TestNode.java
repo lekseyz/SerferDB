@@ -1,4 +1,7 @@
-package core.search.BTree;
+package core.search.btree;
+import core.page.PagingConstants;
+import core.search.Key;
+import core.search.Value;
 import org.junit.jupiter.api.*;
 
 import java.util.Map;
@@ -6,7 +9,7 @@ import java.util.Random;
 import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static core.search.BTree.utils.ByteArrayWrapper.*;
+import static core.search.btree.utils.ByteArrayWrapper.*;
 
 public class TestNode {
     static Random random;
@@ -127,7 +130,7 @@ public class TestNode {
         Node node = new Node(true);
         Map<String, String> map = new TreeMap<>();
 
-        while(node.nodeSize() <= Node.PAGE_SIZE) {
+        while(node.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
             String key = stringGen(100);
             String value = stringGen(300);
             node.leafUpdate(getKey(key), getValue((value)));
@@ -145,7 +148,7 @@ public class TestNode {
     }
 
     @Test
-    void testNodeEncodeDecode() throws Node.NodeSizeException, Node.ValueSizeException, Node.KeySizeException {
+    void testNodeEncodeDecode() {
         Node node = new Node(true);
 
         for (int i = 0; i < 5; i++) {
@@ -154,7 +157,7 @@ public class TestNode {
 
         var buff = Node.encode(node);
 
-        assertEquals(Node.PAGE_SIZE, buff.capacity());
+        assertEquals(PagingConstants.MAX_PAGE_SIZE, buff.capacity());
 
         Node newNode = Node.decode(buff);
 

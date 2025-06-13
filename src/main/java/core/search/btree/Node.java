@@ -1,11 +1,13 @@
-package core.search.BTree;
+package core.search.btree;
 
-import java.awt.*;
+import core.page.PagingConstants;
+import core.search.Key;
+import core.search.Value;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
 
 /*
 Node structure in buffer:
@@ -15,15 +17,7 @@ Node structure in buffer:
 if node is leaf, then children ref empty, else value part is empty
  */
 public class Node {
-    // Constants for page sizing
-    public static final int PAGE_SIZE = 1024 * 4;
-    public static final int KEY_MAX_SIZE = 256;
-    public static final int VAL_MAX_SIZE = 512;
-
     //region Node fields
-    public static class NodeSizeException extends Exception {}
-    public static class ValueSizeException extends Exception {}
-    public static class KeySizeException extends Exception {}
 
     private boolean isLeaf;
     private List<Key> keys;
@@ -46,23 +40,19 @@ public class Node {
 
 
     //region Byte buffer encoding decoding
-    public static ByteBuffer encode(Node node) throws NodeSizeException, KeySizeException, ValueSizeException {
-        if (node.nodeSize() > PAGE_SIZE) throw new NodeSizeException();
+    public static ByteBuffer encode(Node node) {
+        if (node.nodeSize() > PagingConstants.MAX_PAGE_SIZE) throw new RuntimeException("node to big");
 
-        var buff = ByteBuffer.allocate(PAGE_SIZE);
+        var buff = ByteBuffer.allocate(PagingConstants.MAX_PAGE_SIZE);
         buff.put((byte) (node.isLeaf ? 1 : 0));
         buff.putShort((short) node.keys.size());
 
         for (var key : node.keys) {
-            if (key.key.length > KEY_MAX_SIZE) throw new KeySizeException();
-
             buff.putShort((short)key.key.length);
             buff.put(key.key);
         }
         if (node.isLeaf){
             for (var value : node.values) {
-                if (value.value.length > VAL_MAX_SIZE) throw new ValueSizeException();
-
                 buff.putShort((short)value.value.length);
                 buff.put(value.value);
             }
@@ -129,7 +119,7 @@ public class Node {
 
     public boolean isMergingSize() {
         int size = this.nodeSize();
-        return size <= PAGE_SIZE / 4;
+        return size <= PagingConstants.MAX_PAGE_SIZE / 4;
     }
     //endregion
 
@@ -311,14 +301,14 @@ public class Node {
 
     //region Node splitting
     public static List<Node> split(Node old) {
-        if (old.nodeSize() <= PAGE_SIZE) {
+        if (old.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
             return Collections.singletonList(old);
         }
 
         Node[] two = split2(old);
         Node left = two[0], right = two[1];
 
-        if (left.nodeSize() <= PAGE_SIZE) {
+        if (left.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
             return List.of(left, right);
         }
 
@@ -332,12 +322,12 @@ public class Node {
 
         int nleft = nkeys / 2;
 
-        while (nleft > 0 && partialSize(old, 0, nleft) > PAGE_SIZE) {
+        while (nleft > 0 && partialSize(old, 0, nleft) > PagingConstants.MAX_PAGE_SIZE) {
             nleft--;
         }
         if (nleft < 1) nleft = 1;
 
-        while (nleft < nkeys && partialSize(old, nleft, nkeys) > PAGE_SIZE) {
+        while (nleft < nkeys && partialSize(old, nleft, nkeys) > PagingConstants.MAX_PAGE_SIZE) {
             nleft++;
         }
         if (nleft >= nkeys) nleft = nkeys - 1;

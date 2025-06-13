@@ -1,9 +1,12 @@
-package core.search.BTree;
+package core.search;
 
 public class Key implements Comparable<Key>{
+    public static final int MAX_KEY_SIZE = 256;
     public byte[] key;
 
     public Key(byte[] key) {
+        if (key.length > MAX_KEY_SIZE)
+            throw new IllegalArgumentException("key overflow");
         this.key = key;
     }
 

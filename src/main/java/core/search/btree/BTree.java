@@ -1,37 +1,60 @@
-package core.search.BTree;
+package core.search.btree;
 
-public class BTree {
+import core.page.PageDumper;
+import core.page.PagingConstants;
+import core.search.Key;
+import core.search.Searcher;
+import core.search.Value;
+
+import java.util.List;
+
+public class BTree implements Searcher {
     private int root;
+    private final PageDumper dumper;
 
-    private Node get (int id) {
-        return null;
+    public BTree(PageDumper dumper) {
+        this.dumper = dumper;
+        root = -1;
     }
 
-    private int set(Node node) {
-        return 0;
+    @Override
+    public Value search(Key key) {
+        if (root == -1)
+            return null;
+
+        return search(key, Node.decode(dumper.get(root)));
     }
 
-    private void deletec(int ref) {
+    private Value search(Key key, Node curNode) {
+        if (curNode.isLeaf()) {
+            return curNode.getKeyValue(key);
+        }
 
+        int ref = curNode.getChildRef(key);
+        Node nextNode = Node.decode(dumper.get(ref));
+        return search(key, nextNode);
     }
 
+    @Override
     public void insert(Key key, Value value) {
         if (root == -1) {
             Node node = new Node(true);
             node.leafUpdate(Key.NullKey(), Value.NullValue()); // Manually inserting minimal possible value
             node.leafUpdate(key, value);
-            root = set(node);
+            root = dumper.set(Node.encode(node));
             return;
         }
-        Node curRoot = get(this.root);
-        deletec(this.root);
-        Node node = insert(key, value, get(root));
-        var split = Node.split(node);
-        var splitRefs = split.stream().map(this::set).toList();
+        Node curRoot = Node.decode(dumper.get(this.root));
+        dumper.delete(this.root);
+        Node node = insert(key, value, Node.decode(dumper.get(root)));
+        List<Node> split = Node.split(node);
+        List<Integer> splitRefs;
+        splitRefs = split.stream().map(s -> dumper.set(Node.encode(s))).toList();
+
         if (split.size() > 1) {
             Node newRoot = new Node(false);
             newRoot.insertSplitChildren(split, splitRefs);
-            root = set(newRoot);
+            root = dumper.set(Node.encode(newRoot));
         } else {
             root = splitRefs.getFirst();
         }
@@ -43,29 +66,30 @@ public class BTree {
             return curNode;
         }
         int nodeRef = curNode.getChildRef(key);
-        Node node = get(nodeRef);
-        deletec(nodeRef);
+        Node node = Node.decode(dumper.get(nodeRef));
+        dumper.delete(nodeRef);
         node = insert(key, value, node);
 
         var split = Node.split(node);
-        var splitRefs = split.stream().map(this::set).toList();
+        var splitRefs = split.stream().map(s -> dumper.set(Node.encode(s))).toList();
         curNode.insertSplitChildren(split, splitRefs);
         return curNode;
     }
 
+    @Override
     public boolean delete(Key key) {
         if (root == -1) return false;
 
-        Node node = get(root);
+        Node node = Node.decode(dumper.get(root));
         node = delete(key, node);
         if (node == null) return false;
 
-        deletec(root);
+        dumper.delete(root);
 
         if (node.getKeys().size() < 2) {
             root = node.getChildrenRefs().getFirst();
         } else {
-            root = set(node);
+            root = dumper.set(Node.encode(node));
         }
         return true;
     }
@@ -78,24 +102,24 @@ public class BTree {
             return node;
         }
         int ref = node.getChildRef(key);
-        Node child = get(ref);
+        Node child = Node.decode(dumper.get(ref));
         child = delete(key, child);
 
         if (child == null) return null;
 
-        deletec(ref);
+        dumper.delete(ref);
         Node sibling = null;
         int mergeDir = shouldMerge(node, child, sibling);
 
         if (mergeDir < 0) {
             assert sibling != null;
             Node merged = node.mergeTwoChildren(sibling, child);
-            node.nodeUpdate(merged.getKeys().getFirst(), set(merged), merged.getKeys().getFirst());
+            node.nodeUpdate(merged.getKeys().getFirst(), dumper.set(Node.encode(merged)), merged.getKeys().getFirst());
             return node;
         } else if (mergeDir > 0) {
             assert sibling != null;
             Node merged = node.mergeTwoChildren(child, sibling);
-            node.nodeUpdate(merged.getKeys().getFirst(), set(merged), merged.getKeys().getFirst());
+            node.nodeUpdate(merged.getKeys().getFirst(), dumper.set(Node.encode(merged)), merged.getKeys().getFirst());
             return node;
         }
 
@@ -103,7 +127,7 @@ public class BTree {
             node.nodeDelete(key);
             return node;
         }
-        node.nodeUpdate(key, set(child), child.getKeys().getFirst());
+        node.nodeUpdate(key, dumper.set(Node.encode(child)), child.getKeys().getFirst());
         return node;
     }
 
@@ -116,15 +140,15 @@ public class BTree {
         int leftSibling = parent.getLeftSiblingRef(child.getKeys().getFirst());
         int rightSibling = parent.getRightSiblingRef(child.getKeys().getFirst());
         if (leftSibling != -1) {
-            Node sibling = get(leftSibling);
-            if (sibling.nodeSize() + child.nodeSize() <= Node.PAGE_SIZE) {
+            Node sibling = Node.decode(dumper.get(leftSibling));
+            if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
                 outSibling = sibling;
                 return -1;
             }
         }
         if (rightSibling != -1) {
-            Node sibling = get(rightSibling);
-            if (sibling.nodeSize() + child.nodeSize() <= Node.PAGE_SIZE) {
+            Node sibling = Node.decode(dumper.get(rightSibling));
+            if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
                 outSibling = sibling;
                 return 1;
             }

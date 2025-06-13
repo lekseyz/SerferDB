@@ -1,9 +1,12 @@
-package core.search.BTree;
+package core.search;
 
 public class Value {
+    public static final int MAX_VALUE_SIZE = 512;
     public byte[] value;
 
     public Value(byte[] value) {
+        if (value.length > MAX_VALUE_SIZE)
+            throw new IllegalArgumentException("value overflow");
         this.value = value;
     }
 

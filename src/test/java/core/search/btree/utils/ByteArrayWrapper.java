@@ -1,4 +1,4 @@
-package core.search.BTree.utils;
+package core.search.btree.utils;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
