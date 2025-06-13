@@ -1,5 +1,8 @@
 package core.search.btree.utils;
 
+import core.search.Key;
+import core.search.Value;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.Arrays;
@@ -26,5 +29,25 @@ public class ByteArrayWrapper {
         if (bytes.length < 5) throw new IllegalArgumentException("To short byte array, cannot get int");
         var buff = ByteBuffer.wrap(bytes);
         return buff.getInt();
+    }
+
+    public static Key getKey(int value) {
+        return new Key(toBytes(value));
+    }
+
+    public static Key getKey(String value) {
+        return new Key(toBytes(value));
+    }
+
+    public static Value getValue(int value) {
+        return new Value(toBytes(value));
+    }
+
+    public static Value getValue(String value) {
+        return new Value(toBytes(value));
+    }
+
+    private ByteArrayWrapper() {
+
     }
 }

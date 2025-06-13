@@ -6,6 +6,7 @@ import core.search.Key;
 import core.search.Searcher;
 import core.search.Value;
 
+import java.util.AbstractMap;
 import java.util.List;
 
 public class BTree implements Searcher {
@@ -46,7 +47,7 @@ public class BTree implements Searcher {
         }
         Node curRoot = Node.decode(dumper.get(this.root));
         dumper.delete(this.root);
-        Node node = insert(key, value, Node.decode(dumper.get(root)));
+        Node node = insert(key, value, curRoot);
         List<Node> split = Node.split(node);
         List<Integer> splitRefs;
         splitRefs = split.stream().map(s -> dumper.set(Node.encode(s))).toList();
@@ -87,7 +88,10 @@ public class BTree implements Searcher {
         dumper.delete(root);
 
         if (node.getKeys().size() < 2) {
-            root = node.getChildrenRefs().getFirst();
+            if (node.isLeaf())
+                root = -1;
+            else
+                root = node.getChildrenRefs().getFirst();
         } else {
             root = dumper.set(Node.encode(node));
         }
@@ -108,53 +112,53 @@ public class BTree implements Searcher {
         if (child == null) return null;
 
         dumper.delete(ref);
-        Node sibling = null;
-        int mergeDir = shouldMerge(node, child, sibling);
+        var entry = shouldMerge(node, child, key);
+        int mergeDir = entry.getKey();
+        Node sibling = entry.getValue();
 
         if (mergeDir < 0) {
             assert sibling != null;
+            node.nodeDelete(key);
             Node merged = node.mergeTwoChildren(sibling, child);
             node.nodeUpdate(merged.getKeys().getFirst(), dumper.set(Node.encode(merged)), merged.getKeys().getFirst());
             return node;
         } else if (mergeDir > 0) {
             assert sibling != null;
+            node.nodeDelete(sibling.getKeys().getFirst());
             Node merged = node.mergeTwoChildren(child, sibling);
-            node.nodeUpdate(merged.getKeys().getFirst(), dumper.set(Node.encode(merged)), merged.getKeys().getFirst());
+            node.nodeUpdate(key, dumper.set(Node.encode(merged)), merged.getKeys().getFirst());
             return node;
         }
 
         if (child.getKeys().isEmpty()) {
-            node.nodeDelete(key);
             return node;
         }
-        node.nodeUpdate(key, dumper.set(Node.encode(child)), child.getKeys().getFirst());
+        node.nodeUpdate(key, dumper.set(Node.encode(child)), child.getKeys().getFirst()); //здесь
         return node;
     }
 
-    private int shouldMerge(Node parent, Node child, Node outSibling) {
+    private AbstractMap.SimpleEntry<Integer, Node> shouldMerge(Node parent, Node child, Key key) {
         if (!child.isMergingSize()) {
-            outSibling = null;
-            return 0;
+            return new AbstractMap.SimpleEntry<>(0, null);
         }
 
-        int leftSibling = parent.getLeftSiblingRef(child.getKeys().getFirst());
-        int rightSibling = parent.getRightSiblingRef(child.getKeys().getFirst());
+        int leftSibling = parent.getLeftSiblingRef(key);
+        int rightSibling = parent.getRightSiblingRef(key);
         if (leftSibling != -1) {
             Node sibling = Node.decode(dumper.get(leftSibling));
             if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
-                outSibling = sibling;
-                return -1;
+                dumper.delete(leftSibling);
+                return new AbstractMap.SimpleEntry<>(-1, sibling);
             }
         }
         if (rightSibling != -1) {
             Node sibling = Node.decode(dumper.get(rightSibling));
             if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
-                outSibling = sibling;
-                return 1;
+                dumper.delete(rightSibling);
+                return new AbstractMap.SimpleEntry<>(1, sibling);
             }
         }
 
-        outSibling = null;
-        return 0;
+        return new AbstractMap.SimpleEntry<>(0, null);
     }
 }

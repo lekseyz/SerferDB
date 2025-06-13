@@ -2,68 +2,22 @@ package core.search.btree;
 import core.page.PagingConstants;
 import core.search.Key;
 import core.search.Value;
+import core.search.btree.utils.RandomState;
 import org.junit.jupiter.api.*;
 
 import java.util.Map;
-import java.util.Random;
 import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static core.search.btree.utils.ByteArrayWrapper.*;
+import static core.search.btree.utils.KeyValueAssert.*;
 
 public class TestNode {
-    static Random random;
-
-    Key getKey(int value) {
-        return new Key(toBytes(value));
-    }
-
-    Key getKey(String value) {
-        return new Key(toBytes(value));
-    }
-
-    Value getValue(int value) {
-        return new Value(toBytes(value));
-    }
-
-    Value getValue(String value) {
-        return new Value(toBytes(value));
-    }
-
-    void assertKeyValue(Node node, int key, int value) {
-        assertEquals(value, getInt(node.getKeyValue(getKey(key)).value));
-    }
-
-    void assertKeyValue(Node node, int key, String value) {
-        assertEquals(value, getString(node.getKeyValue(getKey(key)).value));
-    }
-
-    void assertKeyValue(Node node, String key, String value) {
-        assertEquals(value, getString(node.getKeyValue(getKey(key)).value));
-    }
-
-    void assertKeyValue(Node node, String key, int value) {
-        assertEquals(value, getInt(node.getKeyValue(getKey(key)).value));
-    }
-
-    void assertKeyRef(Node node, int key, int ref) {
-        assertEquals(ref, node.getChildRef(getKey(key)));
-    }
-
-    void assertKeyRef(Node node, String key, int ref) {
-        assertEquals(ref, node.getChildRef(getKey(key)));
-    }
-
-    String stringGen(int length) {
-        return random.ints('a', 'z' + 1)
-                .limit(length)
-                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
-                .toString();
-    }
+    static RandomState state;
 
     @BeforeAll
     static void setRandom() {
-        random = new Random(42);
+        state = new RandomState(42);
     }
 
     @Test
@@ -128,11 +82,12 @@ public class TestNode {
     @Test
     void testNodeSplit() {
         Node node = new Node(true);
+        node.leafUpdate(Key.NullKey(), Value.NullValue());
         Map<String, String> map = new TreeMap<>();
 
         while(node.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
-            String key = stringGen(100);
-            String value = stringGen(300);
+            String key = state.stringGen(100);
+            String value = state.stringGen(300);
             node.leafUpdate(getKey(key), getValue((value)));
             map.put(key, value);
         }
@@ -143,7 +98,7 @@ public class TestNode {
         for (var kv : map.entrySet()) {
             assertTrue(split.stream().anyMatch(node1 -> node1.leafDelete(getKey(kv.getKey()))));
         }
-
+        assertTrue(split.stream().anyMatch(s -> s.leafDelete(Key.NullKey())));
         assertTrue(split.stream().allMatch(node1 -> node1.getKeys().isEmpty()));
     }
 
@@ -152,7 +107,7 @@ public class TestNode {
         Node node = new Node(true);
 
         for (int i = 0; i < 5; i++) {
-            node.leafUpdate(getKey(stringGen(10)), getValue(stringGen(20)));
+            node.leafUpdate(getKey(state.stringGen(10)), getValue(state.stringGen(20)));
         }
 
         var buff = Node.encode(node);
@@ -166,7 +121,7 @@ public class TestNode {
 
         for (int i = 0; i < node.getKeys().size(); i++) {
             assertEquals(0, node.getKeys().get(i).compareTo(newNode.getKeys().get(i)));
-            assertArrayEquals(node.getValues().get(i).value, newNode.getValues().get(i).value);
+            assertEquals(node.getValues().get(i), newNode.getValues().get(i));
         }
     }
 }

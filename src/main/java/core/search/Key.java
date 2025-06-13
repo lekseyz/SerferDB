@@ -1,17 +1,14 @@
 package core.search;
 
-public class Key implements Comparable<Key>{
+import java.util.Arrays;
+
+public record Key(byte[] key) implements Comparable<Key> {
     public static final int MAX_KEY_SIZE = 256;
-    public byte[] key;
 
     public Key(byte[] key) {
         if (key.length > MAX_KEY_SIZE)
             throw new IllegalArgumentException("key overflow");
-        this.key = key;
-    }
-
-    public Key() {
-        this.key = null;
+        this.key = Arrays.copyOf(key, key.length);
     }
 
     public static Key NullKey() {
@@ -19,17 +16,42 @@ public class Key implements Comparable<Key>{
     }
 
     @Override
-    public int compareTo(Key o) {
-        int minLen = Math.min(this.key.length, o.key.length);
+    public byte[] key() {
+        return Arrays.copyOf(this.key, this.key.length);
+    }
 
-        for (int i = 0; i < minLen; i++) {
-            int cmp = Integer.compare(
-                    Byte.toUnsignedInt(this.key[i]),
-                    Byte.toUnsignedInt(o.key[i])
-            );
+    public Key getCopy() {
+        return new Key(this.key());
+    }
+
+    public int getKeyLength() {
+        return key.length;
+    }
+
+    @Override
+    public int compareTo(Key o) {
+        int min = Math.min(key.length, o.key.length);
+
+        for (int i = 0; i < min; i++) {
+            int cmp = Byte.compareUnsigned(key[i], o.key[i]);
             if (cmp != 0) return cmp;
         }
+        return Integer.compare(key.length, o.key.length);
+    }
 
-        return Integer.compare(this.key.length, o.key.length);
+    @Override
+    public boolean equals(Object obj) {
+        return (this == obj) ||
+                (obj instanceof Key(byte[] key1) && Arrays.equals(key, key1));
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(key);
+    }
+
+    @Override
+    public String toString() {
+        return Arrays.toString(key);
     }
 }

@@ -48,13 +48,13 @@ public class Node {
         buff.putShort((short) node.keys.size());
 
         for (var key : node.keys) {
-            buff.putShort((short)key.key.length);
-            buff.put(key.key);
+            buff.putShort((short)key.getKeyLength());
+            buff.put(key.key());
         }
         if (node.isLeaf){
             for (var value : node.values) {
-                buff.putShort((short)value.value.length);
-                buff.put(value.value);
+                buff.putShort((short)value.value().length);
+                buff.put(value.value());
             }
         } else {
             for (int ref : node.childrenRefs) {
@@ -73,10 +73,10 @@ public class Node {
         node.keys = new ArrayList<>();
         for (int i = 0; i < keysCount; i++) {
             short keyLen = buffer.getShort();
-            var key = new Key();
+            var b = new byte[keyLen];
+            buffer.get(b);
+            var key = new Key(b);
             node.keys.add(key);
-            key.key = new byte[keyLen];
-            buffer.get(key.key);
         }
 
         if (node.isLeaf) {
@@ -84,10 +84,10 @@ public class Node {
 
             for (int i = 0; i < keysCount; i++) {
                 short valueLen = buffer.getShort();
-                var value = new Value();
+                var b = new byte[valueLen];
+                buffer.get(b);
+                var value = new Value(b);
                 node.values.add(value);
-                value.value = new byte[valueLen];
-                buffer.get(value.value);
             }
         } else {
             node.childrenRefs = new ArrayList<>();
@@ -96,6 +96,8 @@ public class Node {
                 node.childrenRefs.add(ref);
             }
         }
+
+        buffer.flip();
         return node;
     }
     //endregion
@@ -104,11 +106,11 @@ public class Node {
     public int nodeSize() {
         int size = 1 + 2; // flag + keys count
         for (var key : this.keys) {
-            size += 2 + key.key.length;
+            size += 2 + key.getKeyLength();
         }
         if (this.isLeaf) {
             for (var value : this.values) {
-                size += 2 + value.value.length;
+                size += 2 + value.value().length;
             }
         } else {
             size += this.keys.size() * 4; // amount of children * size of ref
@@ -186,6 +188,7 @@ public class Node {
         if (newKey != null) {
             this.keys.set(idx, newKey);
             this.childrenRefs.set(idx, child);
+            return;
         }
         if (this.keys.get(idx).compareTo(key) == 0)
             this.childrenRefs.set(idx, child);
@@ -290,11 +293,7 @@ public class Node {
         } else {
             left.childrenRefs.addAll(right.childrenRefs);
         }
-        int idx = getKeyIndex(right.keys.getFirst());
-        assert idx >= 0;
 
-        this.keys.remove(idx);
-        this.childrenRefs.remove(idx);
         return left;
     }
     //endregion
@@ -340,11 +339,11 @@ public class Node {
     private static int partialSize(Node src, int from, int to) {
         int size = 1 + 2; // 1 байт флага + 2 байта количества ключей
         for (int i = from; i < to; i++) {
-            size += 2 + src.keys.get(i).key.length;
+            size += 2 + src.keys.get(i).getKeyLength();
         }
         if (src.isLeaf) {
             for (int i = from; i < to; i++) {
-                size += 2 + src.values.get(i).value.length;
+                size += 2 + src.values.get(i).value().length;
             }
         } else {
             size += (to - from) * 4;
