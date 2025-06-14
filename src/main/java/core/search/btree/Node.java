@@ -38,7 +38,6 @@ public class Node {
         values = new ArrayList<>();
     }
 
-
     //region Byte buffer encoding decoding
     public static ByteBuffer encode(Node node) {
         if (node.nodeSize() > PagingConstants.PAGE_SIZE) throw new RuntimeException("node to big");
@@ -61,8 +60,8 @@ public class Node {
                 buff.putInt(ref);
             }
         }
-
-        return buff.flip();
+        buff.rewind();
+        return buff;
     }
 
     public static Node decode(ByteBuffer buffer) {

@@ -21,6 +21,7 @@ public class DiskPageDumper implements PageDumper {
         meta = null;
         walFile = new RandomAccessFile(walPath.toFile(), "rw");
         recoverFromWAL();
+        initializeIfEmpty();
     }
 
     @Override
@@ -52,7 +53,6 @@ public class DiskPageDumper implements PageDumper {
                 ref = nextPageId++;
 
             byte[] data = new byte[PAGE_SIZE];
-            bytes.rewind();
             bytes.get(data);
 
             walFile.seek(walFile.length());
@@ -112,6 +112,11 @@ public class DiskPageDumper implements PageDumper {
         return meta.rootRef;
     }
 
+    public void close() throws IOException {
+        dataFile.close();
+        walFile.close();
+    }
+
     private void writeMeta() {
         assert meta != null;
 
@@ -128,6 +133,17 @@ public class DiskPageDumper implements PageDumper {
             dataFile.getFD().sync();
 
             clearWAL();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void initializeIfEmpty() {
+        try {
+            if (dataFile.length() < PAGE_SIZE) {
+                meta = new Meta(UNDEFINED_REF, UNDEFINED_REF);
+                writeMeta();
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
