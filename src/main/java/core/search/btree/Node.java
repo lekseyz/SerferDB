@@ -41,9 +41,9 @@ public class Node {
 
     //region Byte buffer encoding decoding
     public static ByteBuffer encode(Node node) {
-        if (node.nodeSize() > PagingConstants.MAX_PAGE_SIZE) throw new RuntimeException("node to big");
+        if (node.nodeSize() > PagingConstants.PAGE_SIZE) throw new RuntimeException("node to big");
 
-        var buff = ByteBuffer.allocate(PagingConstants.MAX_PAGE_SIZE);
+        var buff = ByteBuffer.allocate(PagingConstants.PAGE_SIZE);
         buff.put((byte) (node.isLeaf ? 1 : 0));
         buff.putShort((short) node.keys.size());
 
@@ -121,7 +121,7 @@ public class Node {
 
     public boolean isMergingSize() {
         int size = this.nodeSize();
-        return size <= PagingConstants.MAX_PAGE_SIZE / 4;
+        return size <= PagingConstants.PAGE_SIZE / 4;
     }
     //endregion
 
@@ -300,14 +300,14 @@ public class Node {
 
     //region Node splitting
     public static List<Node> split(Node old) {
-        if (old.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
+        if (old.nodeSize() <= PagingConstants.PAGE_SIZE) {
             return Collections.singletonList(old);
         }
 
         Node[] two = split2(old);
         Node left = two[0], right = two[1];
 
-        if (left.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
+        if (left.nodeSize() <= PagingConstants.PAGE_SIZE) {
             return List.of(left, right);
         }
 
@@ -321,12 +321,12 @@ public class Node {
 
         int nleft = nkeys / 2;
 
-        while (nleft > 0 && partialSize(old, 0, nleft) > PagingConstants.MAX_PAGE_SIZE) {
+        while (nleft > 0 && partialSize(old, 0, nleft) > PagingConstants.PAGE_SIZE) {
             nleft--;
         }
         if (nleft < 1) nleft = 1;
 
-        while (nleft < nkeys && partialSize(old, nleft, nkeys) > PagingConstants.MAX_PAGE_SIZE) {
+        while (nleft < nkeys && partialSize(old, nleft, nkeys) > PagingConstants.PAGE_SIZE) {
             nleft++;
         }
         if (nleft >= nkeys) nleft = nkeys - 1;

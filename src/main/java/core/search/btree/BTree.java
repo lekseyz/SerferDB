@@ -9,18 +9,20 @@ import core.search.Value;
 import java.util.AbstractMap;
 import java.util.List;
 
+import static core.page.PagingConstants.UNDEFINED_REF;
+
 public class BTree implements Searcher {
     private int root;
     private final PageDumper dumper;
 
     public BTree(PageDumper dumper) {
         this.dumper = dumper;
-        root = -1;
+        root = this.dumper.getRoot();
     }
 
     @Override
     public Value search(Key key) {
-        if (root == -1)
+        if (root == UNDEFINED_REF)
             return null;
 
         return search(key, Node.decode(dumper.get(root)));
@@ -38,11 +40,12 @@ public class BTree implements Searcher {
 
     @Override
     public void insert(Key key, Value value) {
-        if (root == -1) {
+        if (root == UNDEFINED_REF) {
             Node node = new Node(true);
             node.leafUpdate(Key.NullKey(), Value.NullValue()); // Manually inserting minimal possible value
             node.leafUpdate(key, value);
             root = dumper.set(Node.encode(node));
+            dumper.setRoot(root);
             return;
         }
         Node curRoot = Node.decode(dumper.get(this.root));
@@ -59,6 +62,7 @@ public class BTree implements Searcher {
         } else {
             root = splitRefs.getFirst();
         }
+        dumper.setRoot(root);
     }
 
     private Node insert(Key key, Value value, Node curNode) {
@@ -89,12 +93,13 @@ public class BTree implements Searcher {
 
         if (node.getKeys().size() < 2) {
             if (node.isLeaf())
-                root = -1;
+                root = UNDEFINED_REF;
             else
                 root = node.getChildrenRefs().getFirst();
         } else {
             root = dumper.set(Node.encode(node));
         }
+        dumper.setRoot(root);
         return true;
     }
 
@@ -146,14 +151,14 @@ public class BTree implements Searcher {
         int rightSibling = parent.getRightSiblingRef(key);
         if (leftSibling != -1) {
             Node sibling = Node.decode(dumper.get(leftSibling));
-            if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
+            if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.PAGE_SIZE) {
                 dumper.delete(leftSibling);
                 return new AbstractMap.SimpleEntry<>(-1, sibling);
             }
         }
         if (rightSibling != -1) {
             Node sibling = Node.decode(dumper.get(rightSibling));
-            if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
+            if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.PAGE_SIZE) {
                 dumper.delete(rightSibling);
                 return new AbstractMap.SimpleEntry<>(1, sibling);
             }

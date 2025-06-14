@@ -85,7 +85,7 @@ public class TestNode {
         node.leafUpdate(Key.NullKey(), Value.NullValue());
         Map<String, String> map = new TreeMap<>();
 
-        while(node.nodeSize() <= PagingConstants.MAX_PAGE_SIZE) {
+        while(node.nodeSize() <= PagingConstants.PAGE_SIZE) {
             String key = state.stringGen(100);
             String value = state.stringGen(300);
             node.leafUpdate(getKey(key), getValue((value)));
@@ -112,7 +112,7 @@ public class TestNode {
 
         var buff = Node.encode(node);
 
-        assertEquals(PagingConstants.MAX_PAGE_SIZE, buff.capacity());
+        assertEquals(PagingConstants.PAGE_SIZE, buff.capacity());
 
         Node newNode = Node.decode(buff);
 

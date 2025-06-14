@@ -3,12 +3,11 @@ package core.search.btree.utils;
 import core.page.PageDumper;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayDeque;
 import java.util.Map;
-import java.util.Queue;
 import java.util.TreeMap;
 
-import static core.page.PagingConstants.MAX_PAGE_SIZE;
+import static core.page.PagingConstants.PAGE_SIZE;
+import static core.page.PagingConstants.UNDEFINED_REF;
 
 public class TesterDumper implements PageDumper {
     public final Map<Integer, ByteBuffer> pages;
@@ -29,7 +28,7 @@ public class TesterDumper implements PageDumper {
 
     @Override
     public int set(ByteBuffer bytes) {
-        if (bytes.capacity() > MAX_PAGE_SIZE) throw new RuntimeException("byte buffer overflow");
+        if (bytes.capacity() > PAGE_SIZE) throw new RuntimeException("byte buffer overflow");
 
         int newIdx = nextIndex++;
 
@@ -43,5 +42,15 @@ public class TesterDumper implements PageDumper {
         if (!pages.containsKey(idx)) throw new RuntimeException("trying to delete non-allocated or freed page");
 
         pages.remove(idx);
+    }
+
+    @Override
+    public void setRoot(int idx) {
+
+    }
+
+    @Override
+    public int getRoot() {
+        return UNDEFINED_REF;
     }
 }
