@@ -9,4 +9,5 @@ public interface PageDumper {
 
     public void setRoot(int idx);
     public int getRoot();
+    public void close();
 }
