@@ -15,14 +15,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class TestDumper {
     static Path dataPath;
-    static Path walPath;
 
     @BeforeAll
     static void createPaths() throws IOException {
         dataPath = Paths.get("_test_data.dump");
-        walPath = Paths.get("_test_wal.dump");
 
-        for (var path : List.of(new Path[]{dataPath, walPath})) {
+        for (var path : List.of(new Path[]{dataPath})) {
             if (Files.exists(path)){
                 Files.delete(path);
             }
@@ -31,7 +29,7 @@ public class TestDumper {
 
     @Test
     public void testWriteAndReadPage() throws IOException {
-        DiskPageDumper dumper = new DiskPageDumper(dataPath, walPath);
+        DiskPageDumper dumper = new DiskPageDumper(dataPath);
         ByteBuffer buf = ByteBuffer.allocate(PAGE_SIZE);
         buf.putInt(42);
         buf.rewind();
@@ -44,7 +42,7 @@ public class TestDumper {
 
     @Test
     public void testPageReuse() throws IOException {
-        DiskPageDumper dumper = new DiskPageDumper(dataPath, walPath);
+        DiskPageDumper dumper = new DiskPageDumper(dataPath);
 
         ByteBuffer buf1 = ByteBuffer.allocate(PAGE_SIZE).putInt(123); buf1.rewind();
         int id1 = dumper.set(buf1);

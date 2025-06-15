@@ -53,4 +53,7 @@ public class TesterDumper implements PageDumper {
     public int getRoot() {
         return UNDEFINED_REF;
     }
+
+    @Override
+    public void close() {}
 }

@@ -3,34 +3,44 @@ package core.memory;
 import core.page.PageDumper;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 
 import static core.page.PagingConstants.PAGE_SIZE;
 import static core.page.PagingConstants.UNDEFINED_REF;
 
 public class DiskPageDumper implements PageDumper {
-    private final RandomAccessFile dataFile;
-    private final RandomAccessFile walFile;
+    private final FileChannel dataChannel;
+    private final Path dbFile;
+    private final Path tmpFile;
     private int nextPageId = 1;
     private Meta meta;
 
-    public DiskPageDumper(Path dataPath, Path walPath) throws IOException {
-        dataFile = new RandomAccessFile(dataPath.toFile(), "rw");
-        meta = null;
-        walFile = new RandomAccessFile(walPath.toFile(), "rw");
-        recoverFromWAL();
-        initializeIfEmpty();
+    public DiskPageDumper(Path dataPath) throws IOException {
+        this.dbFile = dataPath;
+        this.tmpFile = dataPath.resolveSibling(dataPath.getFileName() + ".tmp");
+        if (!Files.exists(dbFile)) {
+            Files.createFile(dbFile);
+        }
+
+        Files.copy(dbFile, tmpFile, StandardCopyOption.REPLACE_EXISTING);
+        dataChannel = FileChannel.open(tmpFile,
+                StandardOpenOption.READ,
+                StandardOpenOption.WRITE);
+        initialize();
     }
 
     @Override
     public synchronized ByteBuffer get(int idx) {
         try {
-            byte[] buffer = new byte[PAGE_SIZE];
-            dataFile.seek((long) (idx + 1) * PAGE_SIZE);
-            dataFile.readFully(buffer);
-            return ByteBuffer.wrap(buffer);
+            ByteBuffer buffer = ByteBuffer.allocateDirect(PAGE_SIZE);
+            dataChannel.read(buffer, (long) (idx + 1) * PAGE_SIZE);
+            buffer.flip();
+            return buffer;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -43,30 +53,18 @@ public class DiskPageDumper implements PageDumper {
             if (meta == null) readMeta();
             if (meta.freeListRef != UNDEFINED_REF) {
                 ref = meta.freeListRef;
-                var buffer = new byte[PAGE_SIZE];
-                dataFile.seek((long) (meta.freeListRef + 1) * PAGE_SIZE);
-                dataFile.readFully(buffer);
-                var listPage = FreeList.decode(ByteBuffer.wrap(buffer));
+                ByteBuffer buffer = ByteBuffer.allocateDirect(PAGE_SIZE);
+                dataChannel.read(buffer, (long) (ref + 1) * PAGE_SIZE);
+                buffer.flip();
+                var listPage = FreeList.decode(buffer);
                 meta.freeListRef = listPage.nextRef;
                 writeMeta();
-            } else
+            } else {
                 ref = nextPageId++;
+            }
 
-            byte[] data = new byte[PAGE_SIZE];
-            bytes.get(data);
-
-            walFile.seek(walFile.length());
-            walFile.writeInt(ref);
-            walFile.writeInt(PAGE_SIZE);
-            walFile.write(data);
-            walFile.getFD().sync();
-
-
-            dataFile.seek((long) (ref + 1) * PAGE_SIZE);
-            dataFile.write(data);
-            dataFile.getFD().sync();
-
-            clearWAL();
+            bytes.rewind();
+            dataChannel.write(bytes, (long) (ref + 1) * PAGE_SIZE);
             return ref;
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -78,18 +76,11 @@ public class DiskPageDumper implements PageDumper {
         try {
             var listPage = new FreeList();
             listPage.nextRef = meta.freeListRef;
-            var buffer = FreeList.encode(listPage).array();
+            ByteBuffer encoded = FreeList.encode(listPage);
 
-            walFile.seek(walFile.length());
-            walFile.writeInt(idx);
-            walFile.writeInt(PAGE_SIZE);
-            walFile.write(buffer);
+            encoded.rewind();
+            dataChannel.write(encoded, (long) (idx + 1) * PAGE_SIZE);
 
-            dataFile.seek((long)(idx + 1) * PAGE_SIZE);
-            dataFile.write(buffer);
-            dataFile.getFD().sync();
-
-            clearWAL();
             meta.freeListRef = idx;
             writeMeta();
         } catch (IOException e) {
@@ -100,47 +91,43 @@ public class DiskPageDumper implements PageDumper {
     @Override
     public void setRoot(int idx) {
         meta = new Meta(idx, meta.freeListRef);
-
         writeMeta();
     }
 
     @Override
     public int getRoot() {
         if (meta != null) return meta.rootRef;
-
         readMeta();
         return meta.rootRef;
     }
 
-    public void close() throws IOException {
-        dataFile.close();
-        walFile.close();
-    }
-
-    private void writeMeta() {
-        assert meta != null;
-
-        var buffer = Meta.encode(meta);
-
+    @Override
+    public void close() {
         try {
-            walFile.seek(walFile.length());
-            walFile.writeInt(0);
-            walFile.writeInt(PAGE_SIZE);
-            walFile.write(buffer.array());
+            dataChannel.force(true); // atomic transactions - guarantee to write the updates on commit
+            dataChannel.close();
 
-            dataFile.seek(0L);
-            dataFile.write(buffer.array());
-            dataFile.getFD().sync();
-
-            clearWAL();
+            Files.move(tmpFile, dbFile, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void initializeIfEmpty() {
+    private void writeMeta() {
+        assert meta != null;
+        ByteBuffer buffer = Meta.encode(meta);
+
         try {
-            if (dataFile.length() < PAGE_SIZE) {
+            buffer.rewind();
+            dataChannel.write(buffer, 0);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void initialize() throws IOException {
+        try {
+            if (dataChannel.size() < PAGE_SIZE) {
                 meta = new Meta(UNDEFINED_REF, UNDEFINED_REF);
                 writeMeta();
             }
@@ -151,30 +138,12 @@ public class DiskPageDumper implements PageDumper {
 
     private void readMeta() {
         try {
-            var bytes = new byte[PAGE_SIZE];
-            dataFile.seek(0L);
-            dataFile.readFully(bytes);
-            meta = Meta.decode(ByteBuffer.wrap(bytes));
+            ByteBuffer buf = ByteBuffer.allocate(PAGE_SIZE);
+            dataChannel.read(buf, 0);
+            buf.flip();
+            meta = Meta.decode(buf);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private void recoverFromWAL() throws IOException {
-        walFile.seek(0);
-        while (walFile.getFilePointer() < walFile.length()) {
-            int pageId = walFile.readInt();
-            int length = walFile.readInt();
-            byte[] data = new byte[length];
-            walFile.readFully(data);
-            dataFile.seek((long) (pageId + 1) * PAGE_SIZE);
-            dataFile.write(data);
-        }
-        clearWAL();
-    }
-
-    private void clearWAL() throws IOException {
-        walFile.setLength(0);
-        walFile.getFD().sync();
     }
 }
