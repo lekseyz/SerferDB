@@ -1,5 +1,7 @@
 package core.search;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 
 public record Key(byte[] key) implements Comparable<Key> {
@@ -13,6 +15,15 @@ public record Key(byte[] key) implements Comparable<Key> {
 
     public static Key NullKey() {
         return new Key(new byte[]{0});
+    }
+
+    public static Key from(String key) {
+        var bytes = key.getBytes(Charset.defaultCharset());
+        return new Key(ByteBuffer
+                .allocate(bytes.length + 1)
+                .put(bytes)
+                .put((byte)1)
+                .array());
     }
 
     @Override
