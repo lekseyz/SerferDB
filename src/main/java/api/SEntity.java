@@ -27,8 +27,11 @@ public class SEntity {
     public Optional<Integer> asInt() {
         if (type != STypes.Int)
             return Optional.empty();
-
-        return Optional.of(ByteWrapper.toInt(content));
+        try {
+            return Optional.of(ByteWrapper.toInt(content));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 
     public Optional<String> asString() {

@@ -13,11 +13,11 @@ public record Value(byte[] value) {
 
     @Override
     public byte[] value() {
-        return Arrays.copyOf(this.value, this.value.length);
+        return this.value;
     }
 
     public static Value NullValue() {
-        return new Value(new byte[]{0});
+        return new Value(new byte[0]);
     }
 
     @Override

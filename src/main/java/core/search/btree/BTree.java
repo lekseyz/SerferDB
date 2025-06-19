@@ -1,11 +1,13 @@
 package core.search.btree;
 
+import core.exception.StorageAccessException;
 import core.page.PageDumper;
 import core.page.PagingConstants;
 import core.search.Key;
 import core.search.Searcher;
 import core.search.Value;
 
+import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.List;
 
@@ -17,7 +19,11 @@ public class BTree implements Searcher {
 
     public BTree(PageDumper dumper) {
         this.dumper = dumper;
-        root = this.dumper.getRoot();
+        try {
+            root = this.dumper.getRoot();
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
     }
 
     @Override
@@ -25,7 +31,11 @@ public class BTree implements Searcher {
         if (root == UNDEFINED_REF)
             return null;
 
-        return search(key, Node.decode(dumper.get(root)));
+        try {
+            return search(key, Node.decode(dumper.get(root)));
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
     }
 
     private Value search(Key key, Node curNode) {
@@ -34,7 +44,12 @@ public class BTree implements Searcher {
         }
 
         int ref = curNode.getChildRef(key);
-        Node nextNode = Node.decode(dumper.get(ref));
+        Node nextNode = null;
+        try {
+            nextNode = Node.decode(dumper.get(ref));
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
         return search(key, nextNode);
     }
 
@@ -42,27 +57,58 @@ public class BTree implements Searcher {
     public void insert(Key key, Value value) {
         if (root == UNDEFINED_REF) {
             Node node = new Node(true);
-            node.leafUpdate(Key.NullKey(), Value.NullValue()); // Manually inserting minimal possible value
+            node.leafUpdate(Key.NullKey(), Value.NullValue()); // Manually inserting minimal possible key
             node.leafUpdate(key, value);
-            root = dumper.set(Node.encode(node));
-            dumper.setRoot(root);
+            try {
+                root = dumper.set(Node.encode(node));
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
+            try {
+                dumper.setRoot(root);
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
             return;
         }
-        Node curRoot = Node.decode(dumper.get(this.root));
-        dumper.delete(this.root);
+        Node curRoot = null;
+        try {
+            curRoot = Node.decode(dumper.get(this.root));
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
+        try {
+            dumper.delete(this.root);
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
         Node node = insert(key, value, curRoot);
         List<Node> split = Node.split(node);
         List<Integer> splitRefs;
-        splitRefs = split.stream().map(s -> dumper.set(Node.encode(s))).toList();
+        splitRefs = split.stream().map(s -> {
+            try {
+                return dumper.set(Node.encode(s));
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
+        }).toList();
 
         if (split.size() > 1) {
             Node newRoot = new Node(false);
             newRoot.insertSplitChildren(split, splitRefs);
-            root = dumper.set(Node.encode(newRoot));
+            try {
+                root = dumper.set(Node.encode(newRoot));
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
         } else {
             root = splitRefs.getFirst();
         }
-        dumper.setRoot(root);
+        try {
+            dumper.setRoot(root);
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
     }
 
     private Node insert(Key key, Value value, Node curNode) {
@@ -71,12 +117,27 @@ public class BTree implements Searcher {
             return curNode;
         }
         int nodeRef = curNode.getChildRef(key);
-        Node node = Node.decode(dumper.get(nodeRef));
-        dumper.delete(nodeRef);
+        Node node = null;
+        try {
+            node = Node.decode(dumper.get(nodeRef));
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
+        try {
+            dumper.delete(nodeRef);
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
         node = insert(key, value, node);
 
         var split = Node.split(node);
-        var splitRefs = split.stream().map(s -> dumper.set(Node.encode(s))).toList();
+        var splitRefs = split.stream().map(s -> {
+            try {
+                return dumper.set(Node.encode(s));
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
+        }).toList();
         curNode.insertSplitChildren(split, splitRefs);
         return curNode;
     }
@@ -85,11 +146,20 @@ public class BTree implements Searcher {
     public boolean delete(Key key) {
         if (root == -1) return false;
 
-        Node node = Node.decode(dumper.get(root));
+        Node node = null;
+        try {
+            node = Node.decode(dumper.get(root));
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
         node = delete(key, node);
         if (node == null) return false;
 
-        dumper.delete(root);
+        try {
+            dumper.delete(root);
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
 
         if (node.getKeys().size() < 2) {
             if (node.isLeaf())
@@ -97,9 +167,17 @@ public class BTree implements Searcher {
             else
                 root = node.getChildrenRefs().getFirst();
         } else {
-            root = dumper.set(Node.encode(node));
+            try {
+                root = dumper.set(Node.encode(node));
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
         }
-        dumper.setRoot(root);
+        try {
+            dumper.setRoot(root);
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
         return true;
     }
 
@@ -111,12 +189,21 @@ public class BTree implements Searcher {
             return node;
         }
         int ref = node.getChildRef(key);
-        Node child = Node.decode(dumper.get(ref));
+        Node child = null;
+        try {
+            child = Node.decode(dumper.get(ref));
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
         child = delete(key, child);
 
         if (child == null) return null;
 
-        dumper.delete(ref);
+        try {
+            dumper.delete(ref);
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
         var entry = shouldMerge(node, child, key);
         int mergeDir = entry.getKey();
         Node sibling = entry.getValue();
@@ -125,20 +212,32 @@ public class BTree implements Searcher {
             assert sibling != null;
             node.nodeDelete(key);
             Node merged = node.mergeTwoChildren(sibling, child);
-            node.nodeUpdate(merged.getKeys().getFirst(), dumper.set(Node.encode(merged)), merged.getKeys().getFirst());
+            try {
+                node.nodeUpdate(merged.getKeys().getFirst(), dumper.set(Node.encode(merged)), merged.getKeys().getFirst());
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
             return node;
         } else if (mergeDir > 0) {
             assert sibling != null;
             node.nodeDelete(sibling.getKeys().getFirst());
             Node merged = node.mergeTwoChildren(child, sibling);
-            node.nodeUpdate(key, dumper.set(Node.encode(merged)), merged.getKeys().getFirst());
+            try {
+                node.nodeUpdate(key, dumper.set(Node.encode(merged)), merged.getKeys().getFirst());
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
             return node;
         }
 
         if (child.getKeys().isEmpty()) {
             return node;
         }
-        node.nodeUpdate(key, dumper.set(Node.encode(child)), child.getKeys().getFirst()); //здесь
+        try {
+            node.nodeUpdate(key, dumper.set(Node.encode(child)), child.getKeys().getFirst()); //здесь
+        } catch (IOException e) {
+            throw new StorageAccessException(e.getMessage(), e.getCause());
+        }
         return node;
     }
 
@@ -150,16 +249,34 @@ public class BTree implements Searcher {
         int leftSibling = parent.getLeftSiblingRef(key);
         int rightSibling = parent.getRightSiblingRef(key);
         if (leftSibling != -1) {
-            Node sibling = Node.decode(dumper.get(leftSibling));
+            Node sibling = null;
+            try {
+                sibling = Node.decode(dumper.get(leftSibling));
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
             if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.PAGE_SIZE) {
-                dumper.delete(leftSibling);
+                try {
+                    dumper.delete(leftSibling);
+                } catch (IOException e) {
+                    throw new StorageAccessException(e.getMessage(), e.getCause());
+                }
                 return new AbstractMap.SimpleEntry<>(-1, sibling);
             }
         }
         if (rightSibling != -1) {
-            Node sibling = Node.decode(dumper.get(rightSibling));
+            Node sibling = null;
+            try {
+                sibling = Node.decode(dumper.get(rightSibling));
+            } catch (IOException e) {
+                throw new StorageAccessException(e.getMessage(), e.getCause());
+            }
             if (sibling.nodeSize() + child.nodeSize() <= PagingConstants.PAGE_SIZE) {
-                dumper.delete(rightSibling);
+                try {
+                    dumper.delete(rightSibling);
+                } catch (IOException e) {
+                    throw new StorageAccessException(e.getMessage(), e.getCause());
+                }
                 return new AbstractMap.SimpleEntry<>(1, sibling);
             }
         }

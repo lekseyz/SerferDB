@@ -12,7 +12,7 @@ import java.util.List;
 /*
 Node structure in buffer:
 | node type | keys amount | ||key size| |key|| * amount | |children ref| * amount | ||value size| |value|| * amount | empty |
-|    1 b    |      1b     | ||   1b   | |Nb || * amount | |    4b      | * amount | ||    1b    | |  Nb || * amount |  ...  |
+|    2b     |      2b     | ||   2b   | |Nb || * amount | |    4b      | * amount | ||    2b    | |  Nb || * amount |  ...  |
 
 if node is leaf, then children ref empty, else value part is empty
  */
@@ -65,6 +65,7 @@ public class Node {
     }
 
     public static Node decode(ByteBuffer buffer) {
+        if (buffer.capacity() > PagingConstants.PAGE_SIZE) throw new RuntimeException("node to big");
         Node node = new Node();
         node.isLeaf = buffer.get() == 1;
         short keysCount = buffer.getShort();
@@ -132,6 +133,7 @@ public class Node {
 
     public Value getKeyValue(Key key) {
         if (!this.isLeaf) throw new UnsupportedOperationException("value cannot be obtained from a non-leaf node");
+        if (values == null || values.isEmpty()) throw new ArrayStoreException("Trying to get value when Node has no values");
 
         int idx = getKeyIndex(key);
         assert idx >= 0;
@@ -144,6 +146,7 @@ public class Node {
 
     public int getChildRef(Key key) {
         if (this.isLeaf) throw new UnsupportedOperationException("childRef cannot be obtained from a leaf node");
+        if (childrenRefs == null || childrenRefs.isEmpty()) throw new ArrayStoreException("Trying to get child when Node has no children");
 
 
         int idx = getKeyIndex(key);
@@ -174,7 +177,7 @@ public class Node {
     }
 
     public void nodeUpdate(Key key, int child, Key newKey) {
-        if (this.isLeaf) throw new UnsupportedOperationException("child ref cannot inserted to leaf node");
+        if (this.isLeaf) throw new UnsupportedOperationException("childRef cannot inserted to leaf node");
 
         if (this.keys.isEmpty()) {
             this.keys.add(key);

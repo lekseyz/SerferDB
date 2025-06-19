@@ -9,7 +9,7 @@ public record Key(byte[] key) implements Comparable<Key> {
 
     public Key(byte[] key) {
         if (key.length > MAX_KEY_SIZE)
-            throw new IllegalArgumentException("key overflow");
+            throw new IllegalArgumentException("Key overflow");
         this.key = Arrays.copyOf(key, key.length);
     }
 
@@ -28,7 +28,7 @@ public record Key(byte[] key) implements Comparable<Key> {
 
     @Override
     public byte[] key() {
-        return Arrays.copyOf(this.key, this.key.length);
+        return this.key;
     }
 
     public Key getCopy() {

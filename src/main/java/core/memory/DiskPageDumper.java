@@ -17,7 +17,6 @@ public class DiskPageDumper implements PageDumper {
     private final FileChannel dataChannel;
     private final Path dbFile;
     private final Path tmpFile;
-    private int nextPageId = 1;
     private Meta meta;
 
     public DiskPageDumper(Path dataPath) throws IOException {
@@ -35,115 +34,98 @@ public class DiskPageDumper implements PageDumper {
     }
 
     @Override
-    public synchronized ByteBuffer get(int idx) {
-        try {
+    public synchronized ByteBuffer get(int idx) throws IOException {
+        ByteBuffer buffer = ByteBuffer.allocateDirect(PAGE_SIZE);
+        dataChannel.read(buffer, (long) (idx + 1) * PAGE_SIZE);
+        buffer.flip();
+        return buffer;
+    }
+
+    @Override
+    public synchronized int set(ByteBuffer bytes) throws IOException {
+        int ref = UNDEFINED_REF;
+        if (meta == null) readMeta();
+        if (meta.freeListRef != UNDEFINED_REF) {
+            ref = meta.freeListRef;
             ByteBuffer buffer = ByteBuffer.allocateDirect(PAGE_SIZE);
-            dataChannel.read(buffer, (long) (idx + 1) * PAGE_SIZE);
+            dataChannel.read(buffer, (long) (ref + 1) * PAGE_SIZE);
             buffer.flip();
-            return buffer;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public synchronized int set(ByteBuffer bytes) {
-        try {
-            int ref = UNDEFINED_REF;
-            if (meta == null) readMeta();
-            if (meta.freeListRef != UNDEFINED_REF) {
-                ref = meta.freeListRef;
-                ByteBuffer buffer = ByteBuffer.allocateDirect(PAGE_SIZE);
-                dataChannel.read(buffer, (long) (ref + 1) * PAGE_SIZE);
-                buffer.flip();
-                var listPage = FreeList.decode(buffer);
-                meta.freeListRef = listPage.nextRef;
-                writeMeta();
-            } else {
-                ref = nextPageId++;
-            }
-
-            bytes.rewind();
-            dataChannel.write(bytes, (long) (ref + 1) * PAGE_SIZE);
-            return ref;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public synchronized void delete(int idx) {
-        try {
-            var listPage = new FreeList();
-            listPage.nextRef = meta.freeListRef;
-            ByteBuffer encoded = FreeList.encode(listPage);
-
-            encoded.rewind();
-            dataChannel.write(encoded, (long) (idx + 1) * PAGE_SIZE);
-
-            meta.freeListRef = idx;
+            var listPage = FreeList.decode(buffer);
+            meta.freeListRef = listPage.nextRef;
             writeMeta();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } else {
+            ref = meta.nextNodeIdx++;
+            writeMeta();
         }
+
+        bytes.rewind();
+        dataChannel.write(bytes, (long) (ref + 1) * PAGE_SIZE);
+        return ref;
     }
 
     @Override
-    public void setRoot(int idx) {
+    public synchronized void delete(int idx) throws IOException {
+        var listPage = new FreeList();
+        listPage.nextRef = meta.freeListRef;
+        ByteBuffer encoded = FreeList.encode(listPage);
+
+        encoded.rewind();
+        dataChannel.write(encoded, (long) (idx + 1) * PAGE_SIZE);
+
+        meta.freeListRef = idx;
+        writeMeta();
+    }
+
+    @Override
+    public void setRoot(int idx) throws IOException {
         meta = new Meta(idx, meta.freeListRef);
         writeMeta();
     }
 
     @Override
     public int getRoot() {
-        if (meta != null) return meta.rootRef;
-        readMeta();
+        if (meta == null) throw new IllegalStateException("Meta cannot be null");
         return meta.rootRef;
     }
 
     @Override
-    public void close() {
-        try {
-            dataChannel.force(true); // atomic transactions - guarantee to write the updates on commit
-            dataChannel.close();
+    public void close() throws IOException {
+        if (!dataChannel.isOpen())
+            return;
 
-            Files.move(tmpFile, dbFile, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        dataChannel.force(true); // atomic transactions - guarantee to write the updates on commit
+        dataChannel.close();
+
+        Files.move(tmpFile, dbFile, StandardCopyOption.REPLACE_EXISTING);
     }
 
-    private void writeMeta() {
+    @Override
+    public void free() throws IOException {
+        close();
+        Files.delete(dbFile);
+    }
+
+    private void writeMeta() throws IOException{
         assert meta != null;
         ByteBuffer buffer = Meta.encode(meta);
 
-        try {
-            buffer.rewind();
-            dataChannel.write(buffer, 0);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        buffer.rewind();
+        dataChannel.write(buffer, 0);
     }
 
     private void initialize() throws IOException {
-        try {
-            if (dataChannel.size() < PAGE_SIZE) {
-                meta = new Meta(UNDEFINED_REF, UNDEFINED_REF);
-                writeMeta();
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        if (dataChannel.size() < PAGE_SIZE) {
+            meta = new Meta(UNDEFINED_REF, UNDEFINED_REF);
+            writeMeta();
+        } else {
+            readMeta();
         }
     }
 
-    private void readMeta() {
-        try {
-            ByteBuffer buf = ByteBuffer.allocate(PAGE_SIZE);
-            dataChannel.read(buf, 0);
-            buf.flip();
-            meta = Meta.decode(buf);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    private void readMeta() throws IOException {
+        ByteBuffer buf = ByteBuffer.allocate(PAGE_SIZE);
+        dataChannel.read(buf, 0);
+        buf.flip();
+        meta = Meta.decode(buf);
     }
 }

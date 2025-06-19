@@ -2,6 +2,7 @@ package core.search.btree.utils;
 
 import core.page.PageDumper;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.TreeMap;
@@ -56,4 +57,9 @@ public class TesterDumper implements PageDumper {
 
     @Override
     public void close() {}
+
+    @Override
+    public void free() throws IOException {
+
+    }
 }
