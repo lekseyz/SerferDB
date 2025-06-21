@@ -25,6 +25,12 @@ public class Meta implements Page {
         nextNodeIdx = 1;
     }
 
+    public Meta(int rootRef, int freeListRef, int  nextNodeIdx) {
+        this.rootRef = rootRef;
+        this.freeListRef = freeListRef;
+        this.nextNodeIdx = nextNodeIdx;
+    }
+
     public static ByteBuffer encode(Meta page) {
         ByteBuffer buffer = ByteBuffer.allocate(PagingConstants.PAGE_SIZE);
         buffer.putInt(page.rootRef);

@@ -80,7 +80,7 @@ public class TestBTree {
     void testStressTest() {
         Map<Key, Value> testTree = new TreeMap<>();
 
-        for (int i = 0; i < 100000; i++) {
+        for (int i = 0; i < 100_000; i++) {
             var key = getKey(state.stringGen(Key.MAX_KEY_SIZE - 1));
             var value = getValue(state.stringGen(Value.MAX_VALUE_SIZE - 1));
             testTree.put(key, value);

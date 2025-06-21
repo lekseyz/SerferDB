@@ -78,7 +78,7 @@ public class DiskPageDumper implements PageDumper {
 
     @Override
     public void setRoot(int idx) throws IOException {
-        meta = new Meta(idx, meta.freeListRef);
+        meta = new Meta(idx, meta.freeListRef, meta.nextNodeIdx);
         writeMeta();
     }
 
@@ -125,7 +125,7 @@ public class DiskPageDumper implements PageDumper {
     private void readMeta() throws IOException {
         ByteBuffer buf = ByteBuffer.allocate(PAGE_SIZE);
         dataChannel.read(buf, 0);
-        buf.flip();
+        buf.rewind();
         meta = Meta.decode(buf);
     }
 }
