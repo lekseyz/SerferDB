@@ -1,4 +1,4 @@
-package examples;
+package examples.simple;
 
 import api.SEntity;
 import api.Serfer;
